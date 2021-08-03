@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="en" class="Internet-Draft">
+<head>
+<meta charset="utf-8">
+<meta content="Common,Latin" name="scripts">
+<meta content="initial-scale=1.0" name="viewport">
+<title>TCP Congestion Control with Appropriate Byte Counting (ABC)</title>
+<meta content="Your Name Here" name="author">
+<meta content="
+       This document proposes a small modification to the way TCP increases
+its congestion window.  Rather than the traditional method of
+increasing the congestion window by a constant amount for each
+arriving acknowledgment, the document suggests basing the increase on
+the number of previously unacknowledged bytes each ACK covers.  This
+change improves the performance of TCP, as well as closes a security
+hole TCP receivers can use to induce the sender into increasing the
+sending rate too rapidly. 
+    " name="description">
+<meta content="xml2rfc 3.9.1" name="generator">
+<meta content="Internet-Draft" name="keyword">
+<meta content="draft-goel-tcpm-rfc3465-bis" name="ietf.draft">
+<!-- Generator version information:
+  xml2rfc 3.9.1
+    Python 3.9.5
+    appdirs 1.4.4
+    ConfigArgParse 1.3
+    google-i18n-address 2.5.0
+    html5lib 1.1
+    intervaltree 3.1.0
+    Jinja2 2.11.3
+    kitchen 1.2.6
+    lxml 4.6.3
+    pycountry 20.7.3
+    pyflakes 2.3.0
+    PyYAML 5.4.1
+    requests 2.25.1
+    setuptools 52.0.0
+    six 1.15.0
+-->
+<link href="draft-todo-yourname-protocol.xml" rel="alternate" type="application/rfc+xml">
+<link href="#copyright" rel="license">
+<style type="text/css">@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-cyrillic.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-cyrillic.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Cabin Condensed';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Cabin Condensed SemiBold'), local('CabinCondensed-SemiBold'), url('https://martinthomson.github.io/rfc-css/fonts/cabincondensed-semibold-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Cabin Condensed';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Cabin Condensed SemiBold'), local('CabinCondensed-SemiBold'), url('https://martinthomson.github.io/rfc-css/fonts/cabincondensed-semibold-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Cabin Condensed';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Cabin Condensed SemiBold'), local('CabinCondensed-SemiBold'), url('https://martinthomson.github.io/rfc-css/fonts/cabincondensed-semibold-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Oxygen Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Oxygen Mono'), local('OxygenMono-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/oxygenmono-regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Oxygen Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Oxygen Mono'), local('OxygenMono-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/oxygenmono-regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+html {
+  --background-color: #fff;
+  --text-color: #222;
+  --title-color: #191919;
+  --link-color: #2a6496;
+  --highlight-color: #f9f9f9;
+  --line-color: #eee;
+  --pilcrow-weak: #ddd;
+  --pilcrow-strong: #bbb;
+  --small-font-size: 14.5px;
+  scrollbar-color: #bbb #eee;
+}
+@media (prefers-color-scheme: dark) {
+html {
+  --background-color: #121212;
+  --text-color: #f0f0f0;
+  --title-color: #fff;
+  --link-color: #4da4f0;
+  --highlight-color: #282828;
+  --line-color: #444;
+  --pilcrow-weak: #444;
+  --pilcrow-strong: #666;
+  scrollbar-color: #777 #333;
+}
+}
+body {
+  max-width: 600px;
+  margin: 75px auto;
+  padding: 0 5px;
+  color: var(--text-color);
+  background-color: var(--background-color);
+  font: 16px/22px "Lora", serif;
+  scroll-behavior: smooth;
+}
+
+.ears {
+  display: none;
+}
+
+/* headings */
+#title, h1, h2, h3, h4, h5, h6 {
+  font-family: "Cabin Condensed", sans-serif;
+  font-weight: 600;
+  margin: 0.8em 0 0.3em;
+  font-size-adjust: 0.5;
+  color: var(--title-color);
+}
+#title {
+  font-size: 32px;
+  line-height: 40px;
+  clear: both;
+}
+#title, #rfcnum {
+  margin: 1.5em 0 0.2em;
+}
+#rfcnum + #title {
+  margin: 0.2em 0;
+}
+
+h1, h2, h3 {
+  font-size: 22px;
+  line-height: 27px;
+}
+h4, h5, h6 {
+  font-size: 20px;
+  line-height: 24px;
+}
+
+/* general structure */
+.author {
+  padding-bottom: 0.3em;
+}
+#abstract+p, #abstract+p code, #abstract+p samp, #abstract+p tt {
+  font-size: 18px;
+  line-height: 24px;
+}
+p {
+  padding: 0;
+  margin: 0.5em 0;
+  text-align: left;
+}
+div {
+  margin: 0;
+}
+.alignRight.art-text {
+  background-color: var(--highlight-color);
+  border: 1px solid var(--line-color);
+  border-radius: 3px;
+  padding: 0.5em 1em 0;
+  margin-bottom: 0.5em;
+}
+.alignRight.art-text pre {
+  padding: 0;
+  width: auto;
+}
+.alignRight {
+  margin: 1em 0;
+}
+.alignRight > *:first-child {
+  border: none;
+  margin: 0;
+  float: right;
+  clear: both;
+}
+.alignRight > *:nth-child(2) {
+  clear: both;
+  display: block;
+  border: none;
+}
+svg {
+  display: block;
+}
+.alignCenter.art-text {
+  background-color: var(--highlight-color);
+  border: 1px solid var(--line-color);
+  border-radius: 3px;
+  padding: 0.5em 1em 0;
+  margin-bottom: 0.5em;
+}
+.alignCenter.art-text pre {
+  padding: 0;
+  width: auto;
+}
+.alignCenter {
+  margin: 1em 0;
+}
+.alignCenter > *:first-child {
+  border: none;
+  /* this isn't optimal, but it's an existence proof.  PrinceXML doesn't
+     support flexbox yet.
+  */
+  display: table;
+  margin: 0 auto;
+}
+
+/* lists */
+ol, ul {
+  padding: 0;
+  margin: 0 0 0.5em 2em;
+}
+ol ol, ul ul, ol ul, ul ol {
+  margin-left: 1em;
+}
+li {
+  margin: 0 0 0.25em 0;
+}
+.ulCompact li {
+  margin: 0;
+}
+ul.empty, .ulEmpty {
+  list-style-type: none;
+}
+ul.empty li, .ulEmpty li {
+  margin-top: 0.5em;
+}
+ul.compact, .ulCompact,
+ol.compact, .olCompact {
+  line-height: 100%;
+  margin: 0 0 0 2em;
+}
+
+/* definition lists */
+dl {
+}
+dl > dt {
+  float: left;
+  margin-right: 1em;
+}
+dl > dd {
+  margin-bottom: .8em;
+  min-height: 1.3em;
+}
+dl.compact > dd, .dlCompact > dd {
+  margin-bottom: 0em;
+}
+dl > dd > dl {
+  margin-top: 0.5em;
+  margin-bottom: 0em;
+}
+dd.break {
+  display: none;
+}
+
+/* links */
+a, a[href].selfRef:hover {
+  text-decoration: none;
+}
+a[href].selfRef {
+  color: var(--text-color);
+}
+a[href] {
+  color: var(--link-color);
+}
+a[href]:hover {
+  text-decoration: underline;
+}
+a[href].selfRef:hover {
+  background-color: var(--highlight-color);
+}
+a.xref {
+  white-space: nowrap;
+}
+
+/* Figures */
+tt, code, pre {
+  background-color: var(--highlight-color);
+  font: 14px/22px 'Oxygen Mono', monospace;
+}
+pre {
+  border: 1px solid var(--line-color);
+  font-size: 13.5px;
+  line-height: 16px;
+  letter-spacing: -0.2px;
+  margin: 5px;
+  padding: 5px;
+}
+img {
+  max-width: 100%;
+}
+figure {
+  margin: 0.5em 0;
+  padding: 0;
+}
+figure blockquote {
+  margin: 0.8em 0.4em 0.4em;
+}
+figcaption, caption {
+  font-style: italic;
+  margin: 0.5em 1.5em;
+  text-align: left;
+}
+@media screen {
+  pre {
+    display: inline-block;
+    overflow-x: auto;
+    max-width: 100%;
+    width: calc(100% - 22px - 1em);
+  }
+  figure pre {
+    display: block;
+    width: calc(100% - 25px);
+  }
+  pre + .pilcrow {
+    display: inline-block;
+    vertical-align: text-bottom;
+    padding-bottom: 8px;
+  }
+}
+
+/* aside, blockquote */
+aside, blockquote {
+  margin-left: 0;
+  padding: 0 2em;
+  font-style: italic;
+}
+blockquote {
+  background-color: var(--highlight-color);
+  border: 1px solid var(--line-color);
+  border-radius: 3px;
+  margin: 1em 0;
+}
+cite {
+  display: block;
+  text-align: right;
+  font-style: italic;
+}
+
+/* tables */
+table {
+  max-width: 100%;
+  margin: 0 0 1em;
+  border-collapse: collapse;
+}
+table.right {
+  margin-left: auto;
+}
+table.center {
+  margin-left: auto;
+  margin-right: auto;
+}
+table.left {
+  margin-right: auto;
+}
+thead, tbody {
+  border: 1px solid var(--line-color);
+}
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 5px 10px;
+}
+th {
+  background-color: var(--line-color);
+}
+tr:nth-child(2n) > td {
+  background-color: var(--background-color);
+}
+tr:nth-child(2n+1) > td {
+  background-color: var(--highlight-color);
+}
+thead+tbody > tr:nth-child(2n) > td {
+  background-color: var(--highlight-color);
+}
+thead+tbody > tr:nth-child(2n+1) > td {
+  background-color: var(--background-color);
+}
+table caption {
+  margin: 0;
+  padding: 3px 0 3px 1em;
+}
+table p {
+  margin: 0;
+}
+
+/* pilcrow */
+a.pilcrow {
+  margin-left: 3px;
+  opacity: 0.2;
+  user-select: none;
+}
+a.pilcrow[href] { color: var(--pilcrow-weak); }
+a.pilcrow[href]:hover { text-decoration: none; }
+@media not print {
+  :hover > a.pilcrow {
+    opacity: 1;
+  }
+  a.pilcrow[href]:hover {
+    color: var(--pilcrow-strong);
+    background-color: transparent;
+  }
+}
+@media print {
+  a.pilcrow {
+    display: none;
+  }
+}
+
+/* misc */
+hr {
+  border: 0;
+  border-top: 1px solid var(--line-color);
+}
+.bcp14 {
+  font-variant: small-caps;
+}
+
+.role {
+  font-variant: all-small-caps;
+}
+
+/* info block */
+#identifiers {
+  margin: 0;
+  font-size: var(--small-font-size);
+  line-height: 18px;
+  --identifier-width: 8em;
+}
+#identifiers dt {
+  width: var(--identifier-width);
+  margin: 0;
+  clear: left;
+  float: left;
+  text-align: right;
+}
+#identifiers dd {
+  margin: 0 0 0 calc(1em + var(--identifier-width));
+  min-width: 5em;
+}
+#identifiers .authors .author {
+  display: inline-block;
+  margin-right: 1.5em;
+}
+#identifiers .authors .org {
+  font-style: italic;
+}
+
+/* The prepared/rendered info at the very bottom of the page */
+.docInfo {
+  color: #999;
+  font-size: 0.9em;
+  font-style: italic;
+  margin-top: 2em;
+}
+.docInfo .prepared {
+  float: left;
+}
+.docInfo .prepared {
+  float: right;
+}
+
+/* table of contents */
+#toc {
+  padding: 0.75em 0 2em 0;
+  margin-bottom: 1em;
+}
+#toc nav ul {
+  margin: 0 0.5em 0 0;
+  padding: 0;
+  list-style: none;
+}
+#toc nav li {
+  line-height: 1.3em;
+  margin: 0.75em 0;
+  padding-left: 1.2em;
+  text-indent: -1.2em;
+}
+#toc a.xref {
+  white-space: normal;
+}
+/* references */
+.references dt {
+  text-align: right;
+  font-weight: bold;
+  min-width: 7em;
+}
+.references dd {
+  margin-left: 8em;
+  overflow: auto;
+}
+
+.refInstance {
+  margin-bottom: 1.25em;
+}
+
+.references .ascii {
+  margin-bottom: 0.25em;
+}
+
+/* index */
+.index ul {
+  margin: 0 0 0 1em;
+  padding: 0;
+  list-style: none;
+}
+.index ul ul {
+  margin: 0;
+}
+.index li {
+  margin: 0;
+  text-indent: -2em;
+  padding-left: 2em;
+  padding-bottom: 5px;
+}
+.indexIndex {
+  margin: 0.5em 0 1em;
+}
+.index a {
+  font-weight: 700;
+}
+/* make the index two-column on all but the smallest screens */
+@media (min-width: 500px) {
+  .index ul {
+    column-count: 2;
+    column-gap: 20px;
+  }
+  .index ul ul {
+    column-count: 1;
+    column-gap: 0;
+  }
+}
+
+/* authors */
+address.vcard {
+  font-style: normal;
+  margin: 1em 0;
+}
+address.vcard .nameRole {
+  font-weight: 700;
+  margin-left: 0;
+}
+address.vcard .label {
+  margin: 0.5em 0;
+}
+address.vcard .type {
+  display: none;
+}
+.alternative-contact {
+  margin: 1.5em 0 1em;
+}
+hr.addr {
+  border-top: 1px dashed;
+  margin: 0;
+  color: #ddd;
+  max-width: calc(100% - 16px);
+}
+@media (min-width: 500px) {
+  #authors-addresses > section {
+    column-count: 2;
+    column-gap: 20px;
+  }
+  #authors-addresses > section > h2 {
+    column-span: all;
+  }
+  /* hack for break-inside: avoid-column */
+  #authors-addresses address {
+    display: inline-block;
+    break-inside: avoid-column;
+  }
+}
+
+.rfcEditorRemove p:first-of-type {
+  font-style: italic;
+}
+.cref {
+  background-color: rgba(249, 232, 105, 0.3);
+  padding: 2px 4px;
+}
+.crefSource {
+  font-style: italic;
+}
+/* alternative layout for smaller screens */
+@media screen and (max-width: 929px) {
+  #toc {
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    right: 0;
+    padding: 0;
+    margin: 0;
+    border-bottom: 1px solid #ccc;
+    opacity: 0.6;
+  }
+  #toc.active {
+      opacity: 1;
+  }
+  #toc h2 {
+    margin: 0;
+    padding: 2px 0 2px 6px;
+    padding-right: 1em;
+    font-size: 18px;
+    line-height: 24px;
+    min-width: 190px;
+    text-align: right;
+    background-color: #444;
+    color: white;
+    cursor: pointer;
+  }
+  #toc h2::before { /* css hamburger */
+    float: right;
+    position: relative;
+    width: 1em;
+    height: 1px;
+    left: -164px;
+    margin: 8px 0 0 0;
+    background: white none repeat scroll 0 0;
+    box-shadow: 0 4px 0 0 white, 0 8px 0 0 white;
+    content: "";
+  }
+  #toc nav {
+    display: none;
+    background-color: var(--background-color);
+    padding: 0.5em 1em 1em;
+    overflow: auto;
+    overscroll-behavior: contain;
+    height: calc(100vh - 48px);
+    border-left: 1px solid #ddd;
+  }
+  #toc.active nav {
+    display: block;
+  }
+  /* Make the collapsed ToC header render white on gray also when it's a link */
+  #toc h2 a,
+  #toc h2 a:link,
+  #toc h2 a:focus,
+  #toc h2 a:hover,
+  #toc a.toplink,
+  #toc a.toplink:hover {
+    color: white;
+    background-color: #444;
+    text-decoration: none;
+  }
+  #toc a.toplink {
+    margin-top: 2px;
+  }
+}
+
+/* alternative layout for wide screens */
+@media screen and (min-width: 930px) {
+  body {
+    padding-right: 360px;
+    padding-right: calc(min(180px + 20%, 500px));
+  }
+  #toc {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    right: calc(50vw - 480px);
+    width: 312px;
+    margin: 0;
+    padding: 0;
+    z-index: 1;
+  }
+  #toc h2 {
+    margin: 0;
+    padding: 0.25em 1em 1em 0;
+  }
+  #toc nav {
+    display: block;
+    height: calc(90vh - 84px);
+    bottom: 0;
+    padding: 0.5em 0 2em;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  #toc nav > ul  {
+    margin-bottom: 2em;
+  }
+  #toc ul {
+    margin: 0 0 0 4px;
+    font-size: var(--small-font-size);
+  }
+  #toc ul p, #toc ul li {
+    margin: 2px 0;
+    line-height: 22px;
+  }
+  img { /* future proofing */
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* pagination */
+@media print {
+  body {
+    width: 100%;
+  }
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+  #n-copyright-notice {
+    border-bottom: none;
+  }
+  #toc, #n-introduction {
+    page-break-before: always;
+  }
+  #toc {
+    border-top: none;
+    padding-top: 0;
+  }
+  figure, pre {
+    page-break-inside: avoid;
+  }
+  figure {
+    overflow: scroll;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
+  h2+*, h3+*, h4+*, h5+*, h6+* {
+    page-break-before: avoid;
+  }
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 10pt;
+  }
+  table {
+    border: 1px solid #ddd;
+  }
+  td {
+    border-top: 1px solid #ddd;
+  }
+}
+
+@page :first {
+  padding-top: 0;
+  @top-left {
+    content: normal;
+    border: none;
+  }
+  @top-center {
+    content: normal;
+    border: none;
+  }
+  @top-right {
+    content: normal;
+    border: none;
+  }
+}
+
+@page {
+  size: A4;
+  margin-bottom: 45mm;
+  padding-top: 20px;
+}
+
+/* Changes introduced to fix issues found during implementation */
+
+/* Separate body from document info even without intervening H1 */
+section {
+  clear: both;
+}
+
+/* Top align author divs, to avoid names without organization dropping level with org names */
+.author {
+  vertical-align: top;
+}
+
+/* Style section numbers with more space between number and title */
+.section-number {
+  padding-right: 0.5em;
+}
+
+/* Add styling for a link in the ToC that points to the top of the document */
+a.toplink {
+  float: right;
+  margin: 8px 0.5em 0;
+}
+
+/* Fix the dl styling to match the RFC 7992 attributes */
+dl > dt,
+dl.dlParallel > dt {
+  float: left;
+  margin-right: 1em;
+}
+dl.dlNewline > dt {
+  float: none;
+}
+
+/* Provide styling for table cell text alignment */
+table .text-left, table .text-left {
+  text-align: left;
+}
+table .text-center, table .text-center {
+  text-align: center;
+}
+table .text-right, table .text-right {
+  text-align: right;
+}
+
+/* Make the alternative author contact information look less like just another
+   author, and group it closer with the primary author contact information */
+.alternative-contact {
+  margin: 0.5em 0 0.25em 0;
+}
+address .non-ascii {
+  margin: 0 0 0 2em;
+}
+
+/* With it being possible to set tables with alignment
+  left, center, and right, { width: 100%; } does not make sense */
+table {
+  width: auto;
+}
+
+/* Avoid reference text that sits in a block with very wide left margin,
+   because of a long floating dt label.*/
+.references dd {
+  overflow: visible;
+}
+
+/* Control caption placement */
+caption {
+  caption-side: bottom;
+}
+
+/* Limit the width of the author address vcard, so names in right-to-left
+   script don't end up on the other side of the page. */
+
+address.vcard {
+  max-width: 20em;
+  margin-right: auto;
+}
+
+/* For address alignment dependent on LTR or RTL scripts */
+address div.left {
+  text-align: left;
+}
+address div.right {
+  text-align: right;
+}
+
+/* Give the table caption label the same styling as the figcaption */
+
+@media print {
+  .toplink {
+    display: none;
+  }
+
+  /* avoid overwriting the top border line with the ToC header */
+  #toc {
+    padding-top: 1px;
+  }
+
+  /* Avoid page breaks inside dl and author address entries */
+  dd {
+    page-break-before: avoid;
+  }
+  .vcard {
+    page-break-inside: avoid;
+  }
+
+}
+/* Tweak the bcp14 keyword presentation */
+.bcp14 {
+  font-variant: small-caps;
+  font-weight: bold;
+  font-size: 0.9em;
+}
+</style>
+
+</head>
+<body>
+<table class="ears">
+<thead><tr>
+<td class="left">Internet-Draft</td>
+<td class="center">ABC</td>
+<td class="right">August 2021</td>
+</tr></thead>
+<tfoot><tr>
+<td class="left">Here</td>
+<td class="center">Expires 4 February 2022</td>
+<td class="right">[Page]</td>
+</tr></tfoot>
+</table>
+<div id="external-metadata" class="document-information"></div>
+<div id="internal-metadata" class="document-information">
+<dl id="identifiers">
+<dt class="label-workgroup">Workgroup:</dt>
+<dd class="workgroup">TCPM</dd>
+<dt class="label-internet-draft">Internet-Draft:</dt>
+<dd class="internet-draft">draft-goel-tcpm-rfc3465-bis</dd>
+<dt class="label-published">Published:</dt>
+<dd class="published">
+<time datetime="2021-08-03" class="published">3 August 2021</time>
+    </dd>
+<dt class="label-intended-status">Intended Status:</dt>
+<dd class="intended-status">Standards Track</dd>
+<dt class="label-expires">Expires:</dt>
+<dd class="expires"><time datetime="2022-02-04">4 February 2022</time></dd>
+<dt class="label-authors">Author:</dt>
+<dd class="authors">
+<div class="author">
+      <div class="author-name">Y.N. Here</div>
+<div class="org">Your Organization Here</div>
+</div>
+</dd>
+</dl>
+</div>
+<h1 id="title">TCP Congestion Control with Appropriate Byte Counting (ABC)</h1>
+<section id="section-abstract">
+      <h2 id="abstract"><a href="#abstract" class="selfRef">Abstract</a></h2>
+<p id="section-abstract-1">This document proposes a small modification to the way TCP increases
+its congestion window.  Rather than the traditional method of
+increasing the congestion window by a constant amount for each
+arriving acknowledgment, the document suggests basing the increase on
+the number of previously unacknowledged bytes each ACK covers.  This
+change improves the performance of TCP, as well as closes a security
+hole TCP receivers can use to induce the sender into increasing the
+sending rate too rapidly.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
+</section>
+<div id="status-of-memo">
+<section id="section-boilerplate.1">
+        <h2 id="name-status-of-this-memo">
+<a href="#name-status-of-this-memo" class="section-name selfRef">Status of This Memo</a>
+        </h2>
+<p id="section-boilerplate.1-1">
+        This Internet-Draft is submitted in full conformance with the
+        provisions of BCP 78 and BCP 79.<a href="#section-boilerplate.1-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-2">
+        Internet-Drafts are working documents of the Internet Engineering Task
+        Force (IETF). Note that other groups may also distribute working
+        documents as Internet-Drafts. The list of current Internet-Drafts is
+        at <span><a href="https://datatracker.ietf.org/drafts/current/">https://datatracker.ietf.org/drafts/current/</a></span>.<a href="#section-boilerplate.1-2" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-3">
+        Internet-Drafts are draft documents valid for a maximum of six months
+        and may be updated, replaced, or obsoleted by other documents at any
+        time. It is inappropriate to use Internet-Drafts as reference
+        material or to cite them other than as "work in progress."<a href="#section-boilerplate.1-3" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-4">
+        This Internet-Draft will expire on 4 February 2022.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="copyright">
+<section id="section-boilerplate.2">
+        <h2 id="name-copyright-notice">
+<a href="#name-copyright-notice" class="section-name selfRef">Copyright Notice</a>
+        </h2>
+<p id="section-boilerplate.2-1">
+            Copyright (c) 2021 IETF Trust and the persons identified as the
+            document authors. All rights reserved.<a href="#section-boilerplate.2-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.2-2">
+            This document is subject to BCP 78 and the IETF Trust's Legal
+            Provisions Relating to IETF Documents
+            (<span><a href="https://trustee.ietf.org/license-info">https://trustee.ietf.org/license-info</a></span>) in effect on the date of
+            publication of this document. Please review these documents
+            carefully, as they describe your rights and restrictions with
+            respect to this document. Code Components extracted from this
+            document must include Simplified BSD License text as described in
+            Section 4.e of the Trust Legal Provisions and are provided without
+            warranty as described in the Simplified BSD License.<a href="#section-boilerplate.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="toc">
+<section id="section-toc.1">
+        <a href="#" onclick="scroll(0,0)" class="toplink">▲</a><h2 id="name-table-of-contents">
+<a href="#name-table-of-contents" class="section-name selfRef">Table of Contents</a>
+        </h2>
+<nav class="toc"><ul class="toc ulEmpty compact ulBare">
+<li class="toc ulEmpty compact ulBare" id="section-toc.1-1.1">
+            <p id="section-toc.1-1.1.1" class="keepWithNext"><a href="#section-1" class="xref">1</a>.  <a href="#name-introduction" class="xref">Introduction</a></p>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.2">
+            <p id="section-toc.1-1.2.1" class="keepWithNext"><a href="#section-2" class="xref">2</a>.  <a href="#name-conventions-and-definitions" class="xref">Conventions and Definitions</a></p>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.3">
+            <p id="section-toc.1-1.3.1"><a href="#section-3" class="xref">3</a>.  <a href="#name-a-modified-algorithm-for-in" class="xref">A Modified Algorithm for Increasing the Congestion Window</a></p>
+<ul class="toc compact ulEmpty ulBare">
+<li class="toc compact ulEmpty ulBare" id="section-toc.1-1.3.2.1">
+                <p id="section-toc.1-1.3.2.1.1" class="keepWithNext"><a href="#section-3.1" class="xref">3.1</a>.  <a href="#name-congestion-avoidance" class="xref">Congestion Avoidance</a></p>
+</li>
+              <li class="toc compact ulEmpty ulBare" id="section-toc.1-1.3.2.2">
+                <p id="section-toc.1-1.3.2.2.1"><a href="#section-3.2" class="xref">3.2</a>.  <a href="#name-slow-start" class="xref">Slow Start</a></p>
+</li>
+              <li class="toc compact ulEmpty ulBare" id="section-toc.1-1.3.2.3">
+                <p id="section-toc.1-1.3.2.3.1"><a href="#section-3.3" class="xref">3.3</a>.  <a href="#name-choosing-the-limit" class="xref">Choosing the Limit</a></p>
+</li>
+              <li class="toc compact ulEmpty ulBare" id="section-toc.1-1.3.2.4">
+                <p id="section-toc.1-1.3.2.4.1"><a href="#section-3.4" class="xref">3.4</a>.  <a href="#name-rto-implications" class="xref">RTO Implications</a></p>
+</li>
+            </ul>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.4">
+            <p id="section-toc.1-1.4.1"><a href="#section-4" class="xref">4</a>.  <a href="#name-advantages" class="xref">Advantages</a></p>
+<ul class="toc compact ulEmpty ulBare">
+<li class="toc compact ulEmpty ulBare" id="section-toc.1-1.4.2.1">
+                <p id="section-toc.1-1.4.2.1.1"><a href="#section-4.1" class="xref">4.1</a>.  <a href="#name-more-appropriate-congestion" class="xref">More Appropriate Congestion Window Increase</a></p>
+</li>
+              <li class="toc compact ulEmpty ulBare" id="section-toc.1-1.4.2.2">
+                <p id="section-toc.1-1.4.2.2.1"><a href="#section-4.2" class="xref">4.2</a>.  <a href="#name-mitigate-the-impact-of-dela" class="xref">Mitigate the Impact of Delayed ACKs and Lost ACKs</a></p>
+</li>
+              <li class="toc compact ulEmpty ulBare" id="section-toc.1-1.4.2.3">
+                <p id="section-toc.1-1.4.2.3.1"><a href="#section-4.3" class="xref">4.3</a>.  <a href="#name-prevents-attacks-from-misbe" class="xref">Prevents Attacks from Misbehaving Receivers</a></p>
+</li>
+            </ul>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.5">
+            <p id="section-toc.1-1.5.1"><a href="#section-5" class="xref">5</a>.  <a href="#name-disadvantages" class="xref">Disadvantages</a></p>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.6">
+            <p id="section-toc.1-1.6.1"><a href="#section-6" class="xref">6</a>.  <a href="#name-fairness-considerations" class="xref">Fairness Considerations</a></p>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.7">
+            <p id="section-toc.1-1.7.1"><a href="#section-7" class="xref">7</a>.  <a href="#name-security-considerations" class="xref">Security Considerations</a></p>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.8">
+            <p id="section-toc.1-1.8.1"><a href="#section-8" class="xref">8</a>.  <a href="#name-iana-considerations" class="xref">IANA Considerations</a></p>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.9">
+            <p id="section-toc.1-1.9.1"><a href="#section-9" class="xref">9</a>.  <a href="#name-conclusions" class="xref">Conclusions</a></p>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.10">
+            <p id="section-toc.1-1.10.1"><a href="#section-10" class="xref">10</a>. <a href="#name-normative-references" class="xref">Normative References</a></p>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.11">
+            <p id="section-toc.1-1.11.1"><a href="#appendix-A" class="xref"></a><a href="#name-acknowledgments" class="xref">Acknowledgments</a></p>
+</li>
+          <li class="toc ulEmpty compact ulBare" id="section-toc.1-1.12">
+            <p id="section-toc.1-1.12.1"><a href="#appendix-B" class="xref"></a><a href="#name-authors-address" class="xref">Author's Address</a></p>
+</li>
+        </ul>
+</nav>
+</section>
+</div>
+<div id="introduction">
+<section id="section-1">
+      <h2 id="name-introduction">
+<a href="#section-1" class="section-number selfRef">1. </a><a href="#name-introduction" class="section-name selfRef">Introduction</a>
+      </h2>
+<p id="section-1-1">This document proposes a modification to the algorithm for increasing
+TCP's congestion window (cwnd) that improves both performance and
+security.  Rather than increasing a TCP's congestion window based on
+the number of acknowledgments (ACKs) that arrive at the data sender
+(per the current specification [RFC2581]), the congestion window is
+increased based on the number of bytes acknowledged by the arriving
+ACKs.  The algorithm improves performance by mitigating the impact of
+delayed ACKs on the growth of cwnd.  At the same time, the algorithm
+provides cwnd growth in direct relation to the probed capacity of a
+network path, therefore providing a more measured response to ACKs
+that cover only small amounts of data (less than a full segment size)
+than ACK counting.  This more appropriate cwnd growth can improve
+both performance and can prevent inappropriate cwnd growth in
+response to a misbehaving receiver.  On the other hand, in some cases
+the modified cwnd growth algorithm causes larger bursts of segments
+to be sent into the network.  In some cases this can lead to a non-
+negligible increase in the drop rate and reduced performance (see
+section 4 for a larger discussion of the issues).<a href="#section-1-1" class="pilcrow">¶</a></p>
+<p id="section-1-2">This document is organized as follows.  Section 2 outlines the
+modified algorithm for increasing TCP's congestion window.  Section 3
+discusses the advantages of using the modified algorithm.  Section 4
+discusses the disadvantages of the approach outlined in this
+document.  Section 5 outlines some of the fairness issues that must
+be considered for the modified algorithm.  Section 6 discusses
+security considerations.<a href="#section-1-2" class="pilcrow">¶</a></p>
+<p id="section-1-3">Statement of Intent<a href="#section-1-3" class="pilcrow">¶</a></p>
+<div class="artwork art-text alignLeft" id="section-1-4">
+<pre>
+This specification contains an algorithm improving the performance
+of TCP which is understood to be effective and safe, but which has
+not been widely deployed.  One goal of publication as an
+Experimental RFC is to be prudent, and encourage use and
+deployment prior to publication in the standards track.  It is the
+intent of the Transport Area to re-submit this specification as an
+IETF Proposed Standard in the future, after more experience has
+been gained.
+</pre><a href="#section-1-4" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="conventions-and-definitions">
+<section id="section-2">
+      <h2 id="name-conventions-and-definitions">
+<a href="#section-2" class="section-number selfRef">2. </a><a href="#name-conventions-and-definitions" class="section-name selfRef">Conventions and Definitions</a>
+      </h2>
+<p id="section-2-1">The key words "<span class="bcp14">MUST</span>", "<span class="bcp14">MUST NOT</span>", "<span class="bcp14">REQUIRED</span>", "<span class="bcp14">SHALL</span>", "<span class="bcp14">SHALL</span>
+NOT", "<span class="bcp14">SHOULD</span>", "<span class="bcp14">SHOULD NOT</span>", "<span class="bcp14">RECOMMENDED</span>", "<span class="bcp14">NOT RECOMMENDED</span>",
+"<span class="bcp14">MAY</span>", and "<span class="bcp14">OPTIONAL</span>" in this document are to be interpreted as
+described in BCP 14 <span>[<a href="#RFC2119" class="xref">RFC2119</a>]</span> <span>[<a href="#RFC8174" class="xref">RFC8174</a>]</span> when, and only when, they
+appear in all capitals, as shown here.<a href="#section-2-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="a-modified-algorithm-for-increasing-the-congestion-window">
+<section id="section-3">
+      <h2 id="name-a-modified-algorithm-for-in">
+<a href="#section-3" class="section-number selfRef">3. </a><a href="#name-a-modified-algorithm-for-in" class="section-name selfRef">A Modified Algorithm for Increasing the Congestion Window</a>
+      </h2>
+<p id="section-3-1">As originally outlined in [Jac88] and specified in [RFC2581], TCP
+uses two algorithms for increasing the congestion window.  During
+steady-state, TCP uses the Congestion Avoidance algorithm to linearly
+increase the value of cwnd.  At the beginning of a transfer, after a
+retransmission timeout or after a long idle period (in some
+implementations), TCP uses the Slow Start algorithm to increase cwnd
+exponentially.  According to RFC 2581, slow start bases the cwnd
+increase on the number of incoming acknowledgments.  During
+congestion avoidance RFC 2581 allows more latitude in increasing
+cwnd, but traditionally implementations have based the increase on
+the number of arriving ACKs.  In the following two subsections, we
+detail modifications to these algorithms to increase cwnd based on
+the number of bytes being acknowledged by each arriving ACK, rather
+than by the number of ACKs that arrive.  We call these changes
+"Appropriate Byte Counting" (ABC) [All99].<a href="#section-3-1" class="pilcrow">¶</a></p>
+<div id="congestion-avoidance">
+<section id="section-3.1">
+        <h3 id="name-congestion-avoidance">
+<a href="#section-3.1" class="section-number selfRef">3.1. </a><a href="#name-congestion-avoidance" class="section-name selfRef">Congestion Avoidance</a>
+        </h3>
+<p id="section-3.1-1">RFC 2581 specifies that cwnd should be increased by 1 segment per
+round-trip time (RTT) during the congestion avoidance phase of a
+transfer.  Traditionally, TCPs have approximated this increase by
+increasing cwnd by 1/cwnd for each arriving ACK.  This algorithm
+opens cwnd by roughly 1 segment per RTT if the receiver ACKs each
+incoming segment and no ACK loss occurs.  However, if the receiver
+implements delayed ACKs [Bra89], the receiver returns roughly half as
+many ACKs, which causes the sender to open cwnd more conservatively
+(by approximately 1 segment every second RTT).  The approach that
+this document suggests is to store the number of bytes that have been
+ACKed in a "bytes_acked" variable in the TCP control block.  When
+bytes_acked becomes greater than or equal to the value of the
+congestion window, bytes_acked is reduced by the value of cwnd.
+Next, cwnd is incremented by a full-sized segment (SMSS).  The
+algorithm suggested above is specifically allowed by RFC 2581 during
+congestion avoidance because it opens the window by at most 1 segment
+per RTT.<a href="#section-3.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="slow-start">
+<section id="section-3.2">
+        <h3 id="name-slow-start">
+<a href="#section-3.2" class="section-number selfRef">3.2. </a><a href="#name-slow-start" class="section-name selfRef">Slow Start</a>
+        </h3>
+<p id="section-3.2-1">RFC 2581 states that the sender increments the congestion window by
+at most, 1<em>SMSS bytes for each arriving acknowledgment during slow
+start.  This document proposes that a TCP sender <span class="bcp14">SHOULD</span> increase cwnd
+by the number of previously unacknowledged bytes ACKed by each
+incoming acknowledgment, provided the increase is not more than L
+bytes.  Choosing the limit on the increase, L, is discussed in the
+next subsection.  When the number of previously unacknowledged bytes
+ACKed is less than or equal to 1</em>SMSS bytes, or L is less than or
+equal to 1<em>SMSS bytes, this proposal is no more aggressive (and
+possibly less aggressive) than allowed by RFC 2581.  However,
+increasing cwnd by more than 1</em>SMSS bytes in response to a single ACK
+is more aggressive than allowed by RFC 2581.  The more aggressive
+version of the slow start algorithm still falls within the spirit of
+the principles outlined in [Jac88] (i.e., of no more than doubling
+the cwnd per RTT), and this document proposes ABC for experimentation
+in shared networks, provided an appropriate limit is applied (see
+next section).<a href="#section-3.2-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="choosing-the-limit">
+<section id="section-3.3">
+        <h3 id="name-choosing-the-limit">
+<a href="#section-3.3" class="section-number selfRef">3.3. </a><a href="#name-choosing-the-limit" class="section-name selfRef">Choosing the Limit</a>
+        </h3>
+<p id="section-3.3-1">The limit, L, chosen for the cwnd increase during slow start,
+controls the aggressiveness of the algorithm.  Choosing L=1<em>SMSS
+bytes provides behavior that is no more aggressive than allowed by
+RFC 2581.  However, ABC with L=1</em>SMSS bytes is more conservative in a
+number of key ways (as discussed in the next section) and therefore,
+this document suggests that even though with L=1*SMSS bytes TCP
+stacks will see little performance change, ABC <span class="bcp14">SHOULD</span> be used.<a href="#section-3.3-1" class="pilcrow">¶</a></p>
+<p id="section-3.3-2">A very large L could potentially lead to large line-rate bursts of
+traffic in the face of a large amount of ACK loss or in the case when
+the receiver sends "stretch ACKs" (ACKs for more than the two full-
+sized segments allowed by the delayed ACK algorithm) [Pax97].<a href="#section-3.3-2" class="pilcrow">¶</a></p>
+<p id="section-3.3-3">This document specifies that TCP implementations <span class="bcp14">MAY</span> use L=2<em>SMSS
+bytes and <span class="bcp14">MUST NOT</span> use L &gt; 2</em>SMSS bytes.  This choice balances
+between being conservative (L=1<em>SMSS bytes) and being potentially
+very aggressive.  In addition, L=2</em>SMSS bytes exactly balances the
+negative impact of the delayed ACK algorithm (as discussed in more
+detail in section 3.2).  Note that when L=2*SMSS bytes cwnd growth is
+roughly the same as the case when the standard algorithms are used in
+conjunction with a receiver that transmits an ACK for each incoming
+segment [All98] (assuming no or small amounts of ACK loss in both
+cases).<a href="#section-3.3-3" class="pilcrow">¶</a></p>
+<p id="section-3.3-4">The exception to the above suggestion is during a slow start phase
+that follows a retransmission timeout (RTO).  In this situation, a
+TCP <span class="bcp14">MUST</span> use L=1<em>SMSS as specified in RFC 2581 since ACKs for large
+amounts of previously unacknowledged data are common during this
+phase of a transfer.  These ACKs do not necessarily indicate how much
+data has left the network in the last RTT, and therefore ABC cannot
+accurately determine how much to increase cwnd.  As an example, say
+segment N is dropped by the network, and segments N+1 and N+2 arrive
+successfully at the receiver.  The sender will receive only two
+duplicate ACKs and therefore must rely on the retransmission timer
+(RTO) to detect the loss.  When the RTO expires, segment N is
+retransmitted.  The ACK sent in response to the retransmission will
+be for segment N+2.  However, this ACK does not indicate that three
+segments have left the network in the last RTT, but rather only a
+single segment left the network.  Therefore, the appropriate cwnd
+increment is at most 1</em>SMSS bytes.<a href="#section-3.3-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="rto-implications">
+<section id="section-3.4">
+        <h3 id="name-rto-implications">
+<a href="#section-3.4" class="section-number selfRef">3.4. </a><a href="#name-rto-implications" class="section-name selfRef">RTO Implications</a>
+        </h3>
+<p id="section-3.4-1">[Jac88] shows that increases in cwnd of more than a factor of two in
+succeeding RTTs can cause spurious retransmissions on slow links
+where the bandwidth dominates the RTT, assuming the RTO estimator
+given in [Jac88] and [RFC2988].  ABC stays within this limit of no
+more than doubling cwnd in successive RTTs by capping the increase
+(no matter what L is employed) by the number of previously
+unacknowledged bytes covered by each incoming ACK.<a href="#section-3.4-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="advantages">
+<section id="section-4">
+      <h2 id="name-advantages">
+<a href="#section-4" class="section-number selfRef">4. </a><a href="#name-advantages" class="section-name selfRef">Advantages</a>
+      </h2>
+<p id="section-4-1">This section outlines several advantages of using the ABC algorithm
+to increase cwnd, rather than the standard ACK counting algorithm
+given in [RFC2581].<a href="#section-4-1" class="pilcrow">¶</a></p>
+<div id="more-appropriate-congestion-window-increase">
+<section id="section-4.1">
+        <h3 id="name-more-appropriate-congestion">
+<a href="#section-4.1" class="section-number selfRef">4.1. </a><a href="#name-more-appropriate-congestion" class="section-name selfRef">More Appropriate Congestion Window Increase</a>
+        </h3>
+<p id="section-4.1-1">The ABC algorithm outlined in section 2 increases TCP's cwnd in
+proportion to the amount of data actually sent into the network.  ACK
+counting, on the other hand, increments cwnd by a constant upon the
+arrival of each ACK.  For instance, consider an interactive telnet
+connection (e.g., ssh or telnet) in which ACKs generally cover only a
+few bytes of data, but cwnd is increased by 1<em>SMSS bytes for each ACK
+received.  When a large amount of data needs to be transmitted (e.g.,
+displaying a large file) the data is sent in one large burst because
+the cwnd grows by 1</em>SMSS bytes per ACK rather than based on the
+actual amount of capacity used.  Such a line-rate burst of data can
+potentially cause a large amount of segment loss.<a href="#section-4.1-1" class="pilcrow">¶</a></p>
+<p id="section-4.1-2">Congestion Window Validation (CWV) [RFC2861] addresses the above
+problem as well.  CWV limits the amount of unused cwnd a TCP
+connection can accumulate.  ABC can be used in conjunction with CWV
+to obtain an accurate measure of the network path.<a href="#section-4.1-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="mitigate-the-impact-of-delayed-acks-and-lost-acks">
+<section id="section-4.2">
+        <h3 id="name-mitigate-the-impact-of-dela">
+<a href="#section-4.2" class="section-number selfRef">4.2. </a><a href="#name-mitigate-the-impact-of-dela" class="section-name selfRef">Mitigate the Impact of Delayed ACKs and Lost ACKs</a>
+        </h3>
+<p id="section-4.2-1">Delayed ACKs [RFC1122,RFC2581] allow a TCP receiver to refrain from
+sending an ACK for each incoming segment.  However, a receiver <span class="bcp14">SHOULD</span>
+send an ACK for every second full-sized segment that arrives.
+Furthermore, a receiver <span class="bcp14">MUST NOT</span> withhold an ACK for more than 500
+ms. By reducing the number of ACKs sent to the data originator the
+receiver is slowing the growth of the congestion window under an ACK
+counting system.  Using ABC with L=2*SMSS bytes can roughly negate
+the negative impact imposed by delayed ACKs by allowing cwnd to be
+increased for ACKs that are withheld by the receiver.  This allows
+the congestion window to grow in a manner similar to the case when
+the receiver ACKs each incoming segment, but without adding extra
+traffic to the network.  Simulation studies have shown increased
+throughput when a TCP sender uses ABC when compared to the standard
+ACK counting algorithm [All99], especially for short transfers that
+never leave the initial slow start period.<a href="#section-4.2-1" class="pilcrow">¶</a></p>
+<p id="section-4.2-2">Note that delayed ACKs should not be an issue during slow start-based
+loss recovery, as RFC 2581 recommends that receivers should not delay
+ACKs that cover out-of-order segments.  Therefore, as discussed
+above, ABC with L &gt; 1*SMSS bytes is inappropriate for such slow start
+based loss recovery and <span class="bcp14">MUST NOT</span> be used.<a href="#section-4.2-2" class="pilcrow">¶</a></p>
+<p id="section-4.2-3">Note: In the case when an entire window of data is lost, a TCP
+receiver will likely generate delayed ACKs and an L &gt; 1<em>SMSS bytes
+would be safe.  However, detecting this scenario is difficult.
+Therefore to keep ABC conservative, this document mandates that L
+<span class="bcp14">MUST NOT</span> be &gt; 1</em>SMSS bytes in any slow start-based loss recovery.<a href="#section-4.2-3" class="pilcrow">¶</a></p>
+<p id="section-4.2-4">ACK loss can also retard the growth of a congestion window that
+increases based on the number of ACKs that arrive.  When counting
+ACKs, dropped ACKs represent forever-missed opportunities to increase
+cwnd.  Using ABC with L &gt; 1*SMSS bytes allows the sender to mitigate
+the effect of lost ACKs.<a href="#section-4.2-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="prevents-attacks-from-misbehaving-receivers">
+<section id="section-4.3">
+        <h3 id="name-prevents-attacks-from-misbe">
+<a href="#section-4.3" class="section-number selfRef">4.3. </a><a href="#name-prevents-attacks-from-misbe" class="section-name selfRef">Prevents Attacks from Misbehaving Receivers</a>
+        </h3>
+<p id="section-4.3-1">[SCWA99] outlines several methods for a receiver to induce a TCP
+sender into violating congestion control and transmitting data at a
+potentially inappropriate rate.  One of the outlined attacks is "ACK
+Division".  This scheme involves the receiver sending multiple ACKs
+for each incoming data segment, each ACKing only a small portion of
+the original TCP data segment.  Since TCP senders have traditionally
+used ACK counting to increase cwnd, ACK division causes
+inappropriately rapid cwnd growth and, in turn, a potentially
+inappropriate sending rate.  A TCP sender that uses ABC can prevent
+this attack from being used to undermine standard congestion control
+because the cwnd increase is based on the number of bytes ACKed,
+rather than the number of ACKs received.<a href="#section-4.3-1" class="pilcrow">¶</a></p>
+<p id="section-4.3-2">To prevent misbehaving receivers from inducing inappropriate sender
+behavior, this document suggests TCP implementations use ABC, even if
+L=1*SMSS bytes (i.e., not allowing ABC to provide more aggressive
+cwnd growth than allowed by RFC 2581).<a href="#section-4.3-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="disadvantages">
+<section id="section-5">
+      <h2 id="name-disadvantages">
+<a href="#section-5" class="section-number selfRef">5. </a><a href="#name-disadvantages" class="section-name selfRef">Disadvantages</a>
+      </h2>
+<p id="section-5-1">The main disadvantages of using ABC with L=2<em>SMSS bytes are an
+increase in the burstiness of TCP and a small increase in the overall
+loss rate.  [All98] discusses the two ways that ABC increases the
+burstiness of the TCP sender.  First, the "micro burstiness" of the
+connection is increased.  In other words, the number of segments sent
+in response to each incoming ACK is increased by at most 1 segment
+when using ABC with L=2</em>SMSS bytes in conjunction with a receiver
+that is sending delayed ACKs.  During slow start this translates into
+an increase from sending 2 back-to-back segments to sending 3 back-
+to-back packets in response to an ACK for a single packet.  Or, an
+increase from 3 packets to 4 packets when receiving a delayed ACK for
+two outstanding packets.  Note that ACK loss can cause larger bursts.
+However, ABC only increases the burst size by at most 1*SMSS bytes
+per ACK received when compared to the standard behavior.  This slight
+increase in the burstiness should only cause problems for devices
+that have very small buffers.  In addition, ABC increases the "macro
+burstiness" of the TCP sender in response to delayed ACKs in slow
+start.  Rather than increasing cwnd by roughly 1.5 times per RTT, ABC
+roughly doubles the congestion window every RTT.  However, doubling
+cwnd every RTT fits within the spirit of slow start, as originally
+outlined [Jac88].<a href="#section-5-1" class="pilcrow">¶</a></p>
+<p id="section-5-2">With the increased burstiness comes a modest increase in the loss
+rate for a TCP connection employing ABC (see the next section for a
+short discussion on the fairness of ABC to non-ABC flows).  The
+additional loss can be directly attributable to the increased
+aggressiveness of ABC.  During slow start cwnd is increased more
+rapidly.  Therefore when loss occurs cwnd is larger and more drops
+are likely.  Similarly, a congestion avoidance cycle takes roughly
+half, as long when using ABC and delayed ACKs when compared to an ACK
+counting implementation.  In other words, a TCP sender reaches the
+capacity of the network path, drops a packet and reduces the
+congestion window by half roughly twice as often when using ABC.
+However, as discussed above, in spite of the additional loss an ABC
+TCP sender generally obtains better overall performance than a non-
+ABC TCP [All99].<a href="#section-5-2" class="pilcrow">¶</a></p>
+<p id="section-5-3">Due to the increase in the packet drop rate we suggest ABC be
+implemented in conjunction with selective acknowledgments [RFC2018].<a href="#section-5-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="fairness-considerations">
+<section id="section-6">
+      <h2 id="name-fairness-considerations">
+<a href="#section-6" class="section-number selfRef">6. </a><a href="#name-fairness-considerations" class="section-name selfRef">Fairness Considerations</a>
+      </h2>
+<p id="section-6-1">[All99] presents several simple simulations conducted to measure the
+impact of ABC on competing traffic (both ABC and non-ABC).  The
+experiments show that while ABC increases the drop rate for the
+connection using ABC, competing traffic is not greatly effected.  The
+experiments show that standard TCP and ABC both obtain roughly the
+same throughput, regardless of the variant of the competing traffic.
+The simulations also reaffirm that ABC outperforms non-ABC TCP in an
+environment with varying types of TCP connections.  On the other
+hand, the simulations presented in [All99] are not necessarily
+realistic.  Therefore we are encouraging more experimentation in the
+Internet.<a href="#section-6-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="security-considerations">
+<section id="section-7">
+      <h2 id="name-security-considerations">
+<a href="#section-7" class="section-number selfRef">7. </a><a href="#name-security-considerations" class="section-name selfRef">Security Considerations</a>
+      </h2>
+<p id="section-7-1">As discussed in section 3.3, ABC protects a TCP sender from a
+misbehaving receiver that induces the sender into transmitting at an
+inappropriate rate with an "ACK division" attack.  This, in turn,
+protects the network from an overly aggressive sender.<a href="#section-7-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="iana-considerations">
+<section id="section-8">
+      <h2 id="name-iana-considerations">
+<a href="#section-8" class="section-number selfRef">8. </a><a href="#name-iana-considerations" class="section-name selfRef">IANA Considerations</a>
+      </h2>
+<p id="section-8-1">This document has no IANA actions.<a href="#section-8-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="conclusions">
+<section id="section-9">
+      <h2 id="name-conclusions">
+<a href="#section-9" class="section-number selfRef">9. </a><a href="#name-conclusions" class="section-name selfRef">Conclusions</a>
+      </h2>
+<p id="section-9-1">This document RECOMMENDS that all TCP stacks be modified to use ABC
+with L=1<em>SMSS bytes.  This change does not increase the
+aggressiveness of TCP.  Furthermore, simulations of ABC with L=2</em>SMSS
+bytes show a promising performance improvement that we encourage
+researchers to experiment with in the Internet.<a href="#section-9-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<section id="section-10">
+      <h2 id="name-normative-references">
+<a href="#section-10" class="section-number selfRef">10. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
+      </h2>
+<dl class="references">
+<dt id="RFC2119">[RFC2119]</dt>
+      <dd>
+<span class="refAuthor">Bradner, S.</span>, <span class="refTitle">"Key words for use in RFCs to Indicate Requirement Levels"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 2119</span>, <span class="seriesInfo">DOI 10.17487/RFC2119</span>, <time datetime="1997-03" class="refDate">March 1997</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/rfc2119">https://datatracker.ietf.org/doc/html/rfc2119</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8174">[RFC8174]</dt>
+    <dd>
+<span class="refAuthor">Leiba, B.</span>, <span class="refTitle">"Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 8174</span>, <span class="seriesInfo">DOI 10.17487/RFC8174</span>, <time datetime="2017-05" class="refDate">May 2017</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/rfc8174">https://datatracker.ietf.org/doc/html/rfc8174</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+<div id="acknowledgments">
+<section id="appendix-A">
+      <h2 id="name-acknowledgments">
+<a href="#name-acknowledgments" class="section-name selfRef">Acknowledgments</a>
+      </h2>
+<p id="appendix-A-1">This document has benefited from discussions with and encouragement
+from Sally Floyd.  Van Jacobson and Reiner Ludwig provided valuable
+input on the implications of byte counting on the RTO.  Reiner Ludwig
+and Kostas Pentikousis provided valuable feedback on a draft of this
+document.<a href="#appendix-A-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="authors-addresses">
+<section id="appendix-B">
+      <h2 id="name-authors-address">
+<a href="#name-authors-address" class="section-name selfRef">Author's Address</a>
+      </h2>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="fn nameRole">Your Name Here</span></div>
+<div dir="auto" class="left"><span class="org">Your Organization Here</span></div>
+<div class="email">
+<span>Email:</span>
+<a href="mailto:your.email@example.com" class="email">your.email@example.com</a>
+</div>
+</address>
+</section>
+</div>
+<script>const toc = document.getElementById("toc");
+toc.querySelector("h2").addEventListener("click", e => {
+  toc.classList.toggle("active");
+});
+toc.querySelector("nav").addEventListener("click", e => {
+  toc.classList.remove("active");
+});
+</script>
+</body>
+</html>
